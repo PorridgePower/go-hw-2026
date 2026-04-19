@@ -1,4 +1,4 @@
-module github.com/go-hw-2026/hw01_hello_otus
+module github.com/PorridgePower/go-hw-2026/hw01_hello_otus
 
 go 1.23
 
