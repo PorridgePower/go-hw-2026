@@ -29,9 +29,14 @@ func Unpack(input string) (string, error) {
 		} else if unicode.IsNumber(c) {
 			return "", ErrInvalidString
 		} else {
-			result.WriteRune(ch)
+			if ch != 0 {
+				result.WriteRune(ch)
+			}
 			ch = c
 		}
+	}
+	if ch != 0 {
+		result.WriteRune(ch)
 	}
 
 	return result.String(), nil
