@@ -3,6 +3,7 @@ package hw02unpackstring
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -14,26 +15,24 @@ func Unpack(input string) (string, error) {
 	}
 	var ch rune
 	var cnt int
-	var result []rune
+	var result strings.Builder
 	for _, c := range input {
 		if unicode.IsNumber(c) && ch != 0 {
 			cnt, _ = strconv.Atoi(string(c))
-			if cnt == 0 {
-				result = result[:len(result)-1]
-			} else {
-				for range cnt - 1 {
-					result = append(result, ch)
-				}
-			}
+			// if ch == 0 {
+			// 	return "", ErrInvalidString
+			// } else {
+			result.WriteString(strings.Repeat(string(ch), cnt))
 			cnt = 0
 			ch = 0
+			// }
 		} else if unicode.IsNumber(c) {
 			return "", ErrInvalidString
 		} else {
-			result = append(result, c)
+			result.WriteRune(ch)
 			ch = c
 		}
 	}
 
-	return string(result), nil
+	return result.String(), nil
 }
