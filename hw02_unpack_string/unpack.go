@@ -17,16 +17,12 @@ func Unpack(input string) (string, error) {
 	var cnt int
 	var result strings.Builder
 	for _, c := range input {
-		if unicode.IsNumber(c) && ch != 0 {
+		if unicode.IsDigit(c) && ch != 0 {
 			cnt, _ = strconv.Atoi(string(c))
-			// if ch == 0 {
-			// 	return "", ErrInvalidString
-			// } else {
 			result.WriteString(strings.Repeat(string(ch), cnt))
 			cnt = 0
 			ch = 0
-			// }
-		} else if unicode.IsNumber(c) {
+		} else if unicode.IsDigit(c) {
 			return "", ErrInvalidString
 		} else {
 			if ch != 0 {
