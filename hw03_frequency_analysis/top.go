@@ -6,18 +6,19 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strings"
 )
 
-var expr = regexp.MustCompile("\\S+")
+var expr = regexp.MustCompile(`(?:[\pL]|-)+`)
 
 func Top10(input string) []string {
 	result := make(map[string]int)
 
 	for _, w := range expr.FindAllString(input, -1) {
-		result[w]++
+		result[strings.ToLower(w)]++
 	}
 
-	// delete(result, "-")
+	delete(result, "-")
 
 	keys := slices.SortedFunc(maps.Keys(result), func(a, b string) int {
 		if result[a] != result[b] {
@@ -31,7 +32,6 @@ func Top10(input string) []string {
 	for _, k := range keys[:resLen] {
 		res = append(res, k)
 		fmt.Println(k, result[k])
-
 	}
 	return res
 }
