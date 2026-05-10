@@ -38,20 +38,21 @@ func Unpack(input string) (string, error) {
 			return "", ErrInvalidString
 		}
 
-		if unicode.IsDigit(c) && ch != 0 {
+		switch {
+		case unicode.IsDigit(c) && ch != 0:
 			cnt, _ = strconv.Atoi(string(c))
 			fmt.Printf("Unpack: repeat %q %d times\n", ch, cnt)
 			result.WriteString(strings.Repeat(string(ch), cnt))
 			cnt = 0
 			ch = 0
-		} else if unicode.IsDigit(c) {
+		case unicode.IsDigit(c):
 			fmt.Printf("Unpack: digit %q without previous rune => invalid\n", c)
 			return "", ErrInvalidString
-		} else if c == '\\' {
+		case c == '\\':
 			isEscaped = true
 			fmt.Printf("Unpack: start escape after backslash\n")
 			continue
-		} else {
+		default:
 			if ch != 0 {
 				fmt.Printf("Unpack: write pending rune %q\n", ch)
 				result.WriteRune(ch)
