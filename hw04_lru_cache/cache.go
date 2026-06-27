@@ -1,7 +1,6 @@
 package hw04lrucache
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -11,6 +10,11 @@ type Cache interface {
 	Set(key Key, value interface{}) bool
 	Get(key Key) (interface{}, bool)
 	Clear()
+}
+
+type cachedItem struct {
+	key   Key
+	value interface{}
 }
 
 type lruCache struct {
@@ -33,38 +37,40 @@ func (c *lruCache) Set(key Key, value interface{}) bool {
 	defer c.rw.Unlock()
 	item := c.items[key]
 	isExist := (item != nil)
-	fmt.Printf("[LRU Set] key=%q exist=%v value=%v\n", key, isExist, value)
 
 	if !isExist {
 		if c.queue.Len() == c.capacity {
 			backItem := c.queue.Back()
-			fmt.Printf("[LRU Set] evict value=%v\n", backItem.Value)
 			c.queue.Remove(backItem)
+			oldItem := backItem.Value.(cachedItem)
+			delete(c.items, oldItem.key)
 		}
-		newItem := c.queue.PushFront(value)
+
+		newItem := c.queue.PushFront(cachedItem{key: key, value: value})
 		c.items[key] = newItem
-	} else {
-		item.Value = value
-		c.queue.MoveToFront(item)
-		return true
-
+		return isExist
 	}
-	return isExist
 
+	e := item.Value.(cachedItem)
+	e.value = value
+	item.Value = e
+	c.queue.MoveToFront(item)
+	return isExist
 }
 
 func (c *lruCache) Get(key Key) (interface{}, bool) {
 	c.rw.Lock()
 	defer c.rw.Unlock()
-	var item *ListItem = c.items[key]
-	var isExist bool = (item != nil)
+	item := c.items[key]
+	isExist := (item != nil)
 	if !isExist {
 		return nil, isExist
 	}
+
 	c.queue.MoveToFront(item)
-	isExist = true
-	fmt.Printf("[LRU Get] key=%q found=%v value=%v\n", key, isExist, item.Value)
-	return item.Value, isExist
+
+	val := item.Value.(cachedItem)
+	return val.value, isExist
 }
 
 func (c *lruCache) Clear() {

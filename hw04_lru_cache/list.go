@@ -1,7 +1,5 @@
 package hw04lrucache
 
-import "sync"
-
 type List interface {
 	Len() int
 	Front() *ListItem
@@ -22,55 +20,48 @@ type list struct {
 	length    int
 	frontItem *ListItem
 	backItem  *ListItem
-	lock      sync.Mutex
 }
 
 func (l *list) Len() int {
 	return l.length
 }
+
 func (l *list) Front() *ListItem {
 	return l.frontItem
 }
+
 func (l *list) Back() *ListItem {
 	return l.backItem
 }
+
 func (l *list) PushFront(v interface{}) *ListItem {
-	l.lock.Lock()
-	newItem := ListItem{}
-	newItem.Value = v
+	newItem := ListItem{Value: v}
+	newItem.Next = l.frontItem
 	if l.frontItem != nil {
-		newItem.Next = l.frontItem
 		l.frontItem.Prev = &newItem
-		l.frontItem = &newItem
 	} else {
-		l.frontItem = &newItem
 		l.backItem = &newItem
 	}
-	l.length += 1
-	l.lock.Unlock()
+	l.frontItem = &newItem
+	l.length++
 	return &newItem
 }
-func (l *list) PushBack(v interface{}) *ListItem {
-	l.lock.Lock()
-	newItem := ListItem{}
-	newItem.Value = v
-	if l.backItem != nil {
-		newItem.Prev = l.backItem
-		l.backItem.Next = &newItem
-		l.backItem = &newItem
-	} else {
-		l.backItem = &newItem
-		l.frontItem = &newItem
 
+func (l *list) PushBack(v interface{}) *ListItem {
+	newItem := ListItem{Value: v}
+	newItem.Prev = l.backItem
+	if l.backItem != nil {
+		l.backItem.Next = &newItem
+	} else {
+		l.frontItem = &newItem
 	}
-	l.length += 1
-	l.lock.Unlock()
+	l.backItem = &newItem
+	l.length++
 	return &newItem
 }
 
 // Метод вызывается только от существующих в списке элементов.
 func (l *list) Remove(i *ListItem) {
-	l.lock.Lock()
 	if i.Next != nil {
 		i.Next.Prev = i.Prev
 	} else {
@@ -81,15 +72,14 @@ func (l *list) Remove(i *ListItem) {
 	} else {
 		l.frontItem = i.Next
 	}
-	l.length -= 1
-	l.lock.Unlock()
+	i.Prev = nil
+	i.Next = nil
+	l.length--
 }
 
 // Метод вызывается только от существующих в списке элементов.
 func (l *list) MoveToFront(i *ListItem) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	if i.Prev == nil {
+	if i == nil || i == l.frontItem {
 		return
 	}
 	if i.Prev != nil {
@@ -98,13 +88,20 @@ func (l *list) MoveToFront(i *ListItem) {
 	if i.Next != nil {
 		i.Next.Prev = i.Prev
 	}
+	if i == l.backItem {
+		l.backItem = i.Prev
+	}
 
+	// attach at front
+	i.Prev = nil
+	i.Next = l.frontItem
 	if l.frontItem != nil {
 		l.frontItem.Prev = i
 	}
-	i.Prev = nil
-	i.Next = l.frontItem
 	l.frontItem = i
+	if l.backItem == nil {
+		l.backItem = i
+	}
 }
 
 func NewList() List {
