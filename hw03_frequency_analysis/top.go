@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var expr = regexp.MustCompile(`(?:[\pL]|-)+`)
+var expr = regexp.MustCompile(`(?:[\pL\p{So}]|-)+`)
 
 func Top10(input string) []string {
 	result := make(map[string]int)

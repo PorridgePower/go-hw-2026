@@ -100,4 +100,10 @@ func TestTop10(t *testing.T) {
 		expected := []string{"wow"}
 		require.Equal(t, expected, Top10(text))
 	})
+
+	t.Run("text with emoji", func(t *testing.T) {
+		text = "Wow wow wow, it is emoji time 🙃-🙃 🙃 🙃!"
+		expected := []string{"wow", "🙃", "emoji", "is", "it", "time", "🙃-🙃"}
+		require.Equal(t, expected, Top10(text))
+	})
 }
