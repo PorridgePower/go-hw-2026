@@ -11,11 +11,12 @@ var ErrErrorsLimitExceeded = errors.New("errors limit exceeded")
 type Task func() error
 
 // Run starts tasks in n goroutines and stops its work when receiving m errors from tasks.
-func Run(tasks []Task, n int, m int64) error {
+func Run(tasks []Task, n, m int) error {
 	taskChan := make(chan Task)
-	var errCnt int64 = 0
 	errChan := make(chan struct{})
 	stopChan := make(chan struct{})
+	doneChan := make(chan struct{})
+	var errCnt int32 = 0
 	var wg sync.WaitGroup
 
 	// ===========================================
@@ -24,10 +25,12 @@ func Run(tasks []Task, n int, m int64) error {
 		defer wg.Done()
 		for {
 			select {
-			case curren_task := <-taskChan:
-				err := current_task()
-				if err {
-					// atomic.AddInt32(errCnt)
+			case currentTask, ok := <-taskChan:
+				if !ok {
+					return
+				}
+				err := currentTask()
+				if err != nil {
 					errChan <- struct{}{}
 				}
 			case <-stopChan:
@@ -43,16 +46,41 @@ func Run(tasks []Task, n int, m int64) error {
 		go runner()
 	}
 
+	wg.Add(1)
+	// Coordinator
+	go func() {
+		defer wg.Done()
+		// defer close(taskChan)
+		// defer close(taskChan)
+		for _, t := range tasks {
+			select {
+			case <-stopChan:
+				// close(taskChan)
+				return
+			case taskChan <- t:
+				continue
+			}
+		}
+		doneChan <- struct{}{}
+
+	}()
+
 	for {
 		select {
 		case <-errChan:
-			atomic.AddInt64(&errCnt, 1)
-			if errCnt >= m {
+			atomic.AddInt32(&errCnt, 1)
+			if m > 0 && errCnt >= int32(m) {
 				close(stopChan)
-				break
+				close(taskChan)
+				return ErrErrorsLimitExceeded
 			}
+		// here check af all task processed
+		case <-doneChan:
+			// break
+			wg.Wait()
+			return nil
 		}
 	}
-
+	wg.Wait()
 	return nil
 }
