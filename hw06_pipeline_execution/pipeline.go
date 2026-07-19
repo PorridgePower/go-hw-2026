@@ -10,17 +10,17 @@ type Stage func(in In) (out Out)
 
 func ExecutePipeline(in In, done In, stages ...Stage) Out {
 	firstChan := make(Bi)
-	stageOutChan := firstChan
-	stageInChan := firstChan
+	var stageOutChan Out = firstChan
+	var stageInChan In = firstChan
 
 	for _, st := range stages {
-		stageOutChan := st(stageInChan)
-		stageInChan = stageOutChan
+		stageOutChan = st(stageInChan)
+		stageInChan = In(stageOutChan)
 	}
 
 	starter := func() {
+		defer close(firstChan)
 		for {
-			defer close(stageOutChan)
 			select {
 			case <-done:
 				return
@@ -33,12 +33,6 @@ func ExecutePipeline(in In, done In, stages ...Stage) Out {
 		}
 	}
 	go starter()
-
-	// background := func() {
-	// 	defer close(in)
-	// 	<-done
-	// }
-	// go background()
 
 	return stageOutChan
 	// return nil ????
