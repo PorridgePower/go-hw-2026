@@ -10,77 +10,84 @@ var ErrErrorsLimitExceeded = errors.New("errors limit exceeded")
 
 type Task func() error
 
+func checkLimit(x, limit int64) error {
+	switch {
+	case limit > 0 && x >= limit:
+		return ErrErrorsLimitExceeded
+	case limit == 0 && x > limit:
+		return ErrErrorsLimitExceeded
+	}
+	return nil
+}
+
 // Run starts tasks in n goroutines and stops its work when receiving m errors from tasks.
 func Run(tasks []Task, n, m int) error {
-	taskChan := make(chan Task)
-	errChan := make(chan struct{})
-	stopChan := make(chan struct{})
-	doneChan := make(chan struct{})
-	var errCnt int32 = 0
-	var wg sync.WaitGroup
+	if n <= 0 {
+		return nil
+	}
+	if m <= 0 {
+		return ErrErrorsLimitExceeded
+	}
 
-	// ===========================================
-	// с runner вроде все ок
-	runner := func() {
+	tasksCh := make(chan Task)
+	stopCh := make(chan struct{})
+	var errCount atomic.Int64
+	var wg sync.WaitGroup
+	var once sync.Once
+
+	stop := func() {
+		once.Do(func() { close(stopCh) })
+	}
+
+	worker := func() {
 		defer wg.Done()
 		for {
 			select {
-			case currentTask, ok := <-taskChan:
+			case <-stopCh:
+				return
+			case task, ok := <-tasksCh:
 				if !ok {
 					return
 				}
-				err := currentTask()
-				if err != nil {
-					errChan <- struct{}{}
+				if err := task(); err != nil {
+					errCount.Add(1)
 				}
-			case <-stopChan:
-				return
 			}
-
 		}
 	}
-	// ===========================================
 
 	for i := 0; i < n; i++ {
 		wg.Add(1)
-		go runner()
+		go worker()
 	}
 
-	wg.Add(1)
-	// Coordinator
 	go func() {
-		defer wg.Done()
-		// defer close(taskChan)
-		// defer close(taskChan)
+		defer close(tasksCh)
 		for _, t := range tasks {
 			select {
-			case <-stopChan:
-				// close(taskChan)
+			case <-stopCh:
 				return
-			case taskChan <- t:
-				continue
+			case tasksCh <- t:
 			}
 		}
-		doneChan <- struct{}{}
-
 	}()
 
-	for {
-		select {
-		case <-errChan:
-			atomic.AddInt32(&errCnt, 1)
-			if m > 0 && errCnt >= int32(m) {
-				close(stopChan)
-				close(taskChan)
-				return ErrErrorsLimitExceeded
+	go func() {
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+				if err := checkLimit(errCount.Load(), int64(m)); err != nil {
+					stop()
+					return
+				}
 			}
-		// here check af all task processed
-		case <-doneChan:
-			// break
-			wg.Wait()
-			return nil
 		}
-	}
+	}()
+
 	wg.Wait()
-	return nil
+	stop()
+
+	return checkLimit(errCount.Load(), int64(m))
 }
