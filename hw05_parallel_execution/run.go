@@ -22,13 +22,6 @@ func checkLimit(x, limit int64) error {
 
 // Run starts tasks in n goroutines and stops its work when receiving m errors from tasks.
 func Run(tasks []Task, n, m int) error {
-	if n <= 0 {
-		return nil
-	}
-	if m <= 0 {
-		return ErrErrorsLimitExceeded
-	}
-
 	tasksCh := make(chan Task)
 	stopCh := make(chan struct{})
 	var errCount atomic.Int64
