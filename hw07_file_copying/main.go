@@ -26,7 +26,7 @@ func init() {
 func main() {
 	flag.Parse()
 	if err := validate_source(); err != nil {
-		log.Fatalf("Critical error", err.Error())
+		log.Fatalf("Critical error: %s", err.Error())
 	}
 	err := Copy(from, to, offset, limit)
 	if err != nil {

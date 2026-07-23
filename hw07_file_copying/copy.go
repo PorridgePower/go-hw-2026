@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 var (
@@ -12,7 +13,9 @@ var (
 )
 
 func Copy(fromPath, toPath string, offset, limit int64) error {
-	// os.MkdirAll(toPath)
+	if err := os.MkdirAll(filepath.Dir(toPath), 0o755); err != nil {
+		return err
+	}
 	fileDst, err := os.Create(toPath)
 	if err != nil {
 		return err
@@ -24,20 +27,21 @@ func Copy(fromPath, toPath string, offset, limit int64) error {
 		return err
 	}
 	defer fileSrc.Close()
-	fileSrc.Seek(offset, 0)
 
 	finfo, _ := fileSrc.Stat()
-	maxBorder := min(offset+limit, finfo.Size())
-	section := io.NewSectionReader(fileSrc, offset, maxBorder-offset)
+	if limit == 0 {
+		limit = finfo.Size()
+	}
+	readLimit := min(limit, finfo.Size()-offset)
+	section := io.NewSectionReader(fileSrc, offset, readLimit)
 
 	buf := make([]byte, 1024)
 	var totalBytes int
 	for {
-		readedBytes, err := section.Read(buf)
+		readBytes, err := section.Read(buf)
 
-		if readedBytes > 0 {
-			// io.LimitReader()
-			writeBytes, errW := fileDst.Write(buf[:readedBytes])
+		if readBytes > 0 {
+			writeBytes, errW := fileDst.Write(buf[:readBytes])
 			if errW != nil {
 				return errW
 			}
@@ -49,7 +53,6 @@ func Copy(fromPath, toPath string, offset, limit int64) error {
 		if err != nil {
 			return err
 		}
-
 	}
 	return nil
 }
