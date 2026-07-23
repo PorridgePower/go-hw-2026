@@ -1,7 +1,14 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"log"
+)
+
+var (
+	ErrFileNotExist = errors.New("non existing source file")
+	// ErrOffsetExceedsFileSize = errors.New("offset exceeds file size")
 )
 
 var (
@@ -18,5 +25,13 @@ func init() {
 
 func main() {
 	flag.Parse()
+	if err := validate_source(); err != nil {
+		log.Fatalf("Critical error", err.Error())
+	}
+	err := Copy(from, to, offset, limit)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
 	// Place your code here.
 }
