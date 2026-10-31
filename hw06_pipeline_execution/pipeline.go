@@ -12,16 +12,26 @@ func wrapper(done In, stage Stage) Stage {
 	wrapped := func(in In) (out Out) {
 		proxyChan := make(Bi)
 		go func() {
-			defer close(proxyChan)
 			for {
 				select {
 				case <-done:
+					close(proxyChan)
+					for range in { //nolint:revive
+					}
 					return
 				case val, ok := <-in:
 					if !ok {
+						close(proxyChan)
 						return
 					}
-					proxyChan <- val
+					select {
+					case proxyChan <- val:
+					case <-done:
+						close(proxyChan)
+						for range in { //nolint:revive
+						}
+						return
+					}
 				}
 			}
 		}()
@@ -45,7 +55,11 @@ func ExecutePipeline(in In, done In, stages ...Stage) Out {
 				if !ok {
 					return
 				}
-				firstChan <- val
+				select {
+				case firstChan <- val:
+				case <-done:
+					return
+				}
 			}
 		}
 	}
@@ -53,9 +67,8 @@ func ExecutePipeline(in In, done In, stages ...Stage) Out {
 
 	for _, st := range stages {
 		stageOutChan = wrapper(done, st)(stageInChan)
-		stageInChan = In(stageOutChan)
+		stageInChan = stageOutChan
 	}
 
 	return stageOutChan
-	// return nil ????
 }

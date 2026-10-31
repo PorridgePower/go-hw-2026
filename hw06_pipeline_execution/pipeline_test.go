@@ -145,6 +145,49 @@ func TestAllStageStop(t *testing.T) {
 		wg.Wait()
 
 		require.Len(t, result, 0)
-
 	})
+}
+
+func TestDoneBeforeInput(t *testing.T) {
+	dummyStage := func(in In) Out {
+		out := make(Bi)
+		go func() {
+			defer close(out)
+			for v := range in {
+				time.Sleep(sleepPerStage)
+				out <- v
+			}
+		}()
+		return out
+	}
+	stages := []Stage{dummyStage}
+	in := make(Bi)
+	done := make(Bi)
+	data := []int{1, 2, 3, 4, 5}
+
+	dataProvider := func() {
+		defer close(in)
+		for _, v := range data {
+			in <- v
+		}
+	}
+
+	close(done)
+	go dataProvider()
+
+	resultCnt := 0
+
+	out := ExecutePipeline(in, done, stages...)
+	for {
+		select {
+		case _, ok := <-out:
+			if !ok {
+				require.Zero(t, resultCnt)
+				return
+			}
+			resultCnt++
+		case <-time.After(sleepPerStage):
+			t.Fatal("Stuck out chan")
+		}
+	}
 }
