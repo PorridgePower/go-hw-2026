@@ -26,7 +26,14 @@ type ValidationError struct {
 type ValidationErrors []ValidationError
 
 func (v ValidationErrors) Error() string {
-	panic("implement me")
+	var complexErr strings.Builder
+	for _, e := range v {
+		complexErr.WriteString(e.Field)
+		complexErr.WriteString(": ")
+		complexErr.WriteString(e.Err.Error())
+		complexErr.WriteString("\n")
+	}
+	return complexErr.String()
 }
 
 type validationRule struct {
@@ -63,14 +70,14 @@ func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 
 		if !found || ruleValue == "" {
 			// TODO: program tag err
-			return nil, fmt.Errorf("%w: empty tag '%s'", validateTag, errParser)
+			return nil, fmt.Errorf("%w: empty tag '%s'", errParser, validateTag)
 		}
 		rule := validationRule{ruleType: ruleType, ruleValue: ruleValue}
 		fmt.Println("Parsed rule:", rule)
 
 		if !isAllowedRule(ruleType) {
 			// TODO: program err
-			return nil, fmt.Errorf("%w: unknown tag value '%s'", ruleType, errParser)
+			return nil, fmt.Errorf("%w: unknown tag value '%s'", errParser, ruleType)
 		}
 
 		rules = append(rules, rule)
@@ -87,18 +94,18 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 			case MIN:
 				ruleMin, err := strconv.Atoi(r.ruleValue)
 				if err != nil {
-					return fmt.Errorf("%w: ruleValue %s is not a number", errParser, r.ruleValue)
+					return fmt.Errorf("%w: '%s' is not a number", errParser, r.ruleValue)
 				}
 				if inputVal < int64(ruleMin) {
-					return fmt.Errorf("%w: value < MIN", errValidator)
+					return fmt.Errorf("%w: %d < %d", errValidator, inputVal, ruleMin)
 				}
 			case MAX:
 				ruleMax, err := strconv.Atoi(r.ruleValue)
 				if err != nil {
-					return fmt.Errorf("%w: ruleValue %s is not a number", errParser, r.ruleValue)
+					return fmt.Errorf("%w: '%s' is not a number", errParser, r.ruleValue)
 				}
 				if inputVal > int64(ruleMax) {
-					return fmt.Errorf("%w: value > MAX", errValidator)
+					return fmt.Errorf("%w: %d > %d", errValidator, inputVal, ruleMax)
 				}
 			case IN:
 				var allowedValues []int64
@@ -112,7 +119,8 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 					allowedValues = append(allowedValues, int64(n))
 				}
 				if !slices.Contains(allowedValues, inputVal) {
-					return fmt.Errorf("%w: value not in allowedValues", errValidator)
+					return fmt.Errorf("%w: value not in %v", errValidator, allowedValues)
+
 				}
 
 			}
@@ -125,17 +133,17 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 			case LENGTH:
 				requiredLen, _ := strconv.Atoi(r.ruleValue)
 				if len(inputVal) != requiredLen {
-					return fmt.Errorf("%w: len != LEN", errValidator)
+					return fmt.Errorf("%w: length != %d", errValidator, requiredLen)
 
 				}
 			case REGEXP:
 				re, err := regexp.Compile(r.ruleValue)
 				if err != nil {
 					// TODO: program err
-					return fmt.Errorf("%w: value not match regexp", errParser)
+					return fmt.Errorf("%w: value not match regexp '%s'", errParser, r.ruleValue)
 				}
 				if !re.MatchString(inputVal) {
-					return fmt.Errorf("%w: invalid regexp", errValidator)
+					return fmt.Errorf("%w: invalid regexp '%q'", errValidator, r.ruleValue)
 				}
 			case IN:
 				var allowedValues []string
@@ -144,7 +152,7 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 					allowedValues = append(allowedValues, part)
 				}
 				if !slices.Contains(allowedValues, inputVal) {
-					return fmt.Errorf("%w: value not in allowedValues", errValidator)
+					return fmt.Errorf("%w: value not in %v", errValidator, allowedValues)
 				}
 			}
 		}
@@ -183,7 +191,7 @@ func Validate(v interface{}) error {
 			tags, _ := parseTag(rf.Tag)
 			elemErr := validateItem(rfValue, tags)
 			if elemErr != nil {
-				if errors.As(errParser, &elemErr) {
+				if errors.Is(elemErr, errParser) {
 					return elemErr
 				}
 				err = append(err, ValidationError{Field: rf.Name, Err: elemErr})
