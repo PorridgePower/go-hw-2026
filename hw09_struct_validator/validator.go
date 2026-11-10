@@ -50,18 +50,9 @@ type ruleValue struct {
 }
 
 var (
-	errParser    = fmt.Errorf("invalid validate tag")
+	errTagParser = fmt.Errorf("invalid validate tag")
 	errValidator = fmt.Errorf("value does not satisfy validation rule")
 )
-
-func isAllowedRule(ruleType string) bool {
-	switch ruleType {
-	case IN, MIN, MAX, LENGTH, REGEXP:
-		return true
-	default:
-		return false
-	}
-}
 
 func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 	validateTag, ok := stag.Lookup("validate")
@@ -69,7 +60,6 @@ func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 		return nil, nil
 	}
 	strRules := strings.Split(validateTag, "|")
-	fmt.Println(strRules)
 
 	rules := make([]validationRule, 0, len(strRules))
 
@@ -77,8 +67,7 @@ func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 		ruleType, ruleValueStr, found := strings.Cut(r, ":")
 
 		if !found || ruleValueStr == "" {
-			// TODO: program tag err
-			return nil, fmt.Errorf("%w: empty tag '%s'", errParser, validateTag)
+			return nil, fmt.Errorf("%w: empty rule '%s'", errTagParser, validateTag)
 		}
 
 		var rv ruleValue
@@ -86,15 +75,13 @@ func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 		case MIN:
 			ruleMin, err := strconv.ParseInt(ruleValueStr, 10, 64)
 			if err != nil {
-				// TODO: program err
-				return nil, fmt.Errorf("%w: '%s' is not a number", errParser, ruleValueStr)
+				return nil, fmt.Errorf("%w: '%s' is not a number", errTagParser, ruleValueStr)
 			}
 			rv.minVal = &ruleMin
 		case MAX:
 			ruleMax, err := strconv.ParseInt(ruleValueStr, 10, 64)
 			if err != nil {
-				// TODO: program err
-				return nil, fmt.Errorf("%w: '%s' is not a number", errParser, ruleValueStr)
+				return nil, fmt.Errorf("%w: '%s' is not a number", errTagParser, ruleValueStr)
 			}
 			rv.maxVal = &ruleMax
 
@@ -108,62 +95,55 @@ func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 		case REGEXP:
 			re, err := regexp.Compile(ruleValueStr)
 			if err != nil {
-				// TODO: program err
-				return nil, fmt.Errorf("%w: invalid regexp '%s'", errParser, ruleValueStr)
+				return nil, fmt.Errorf("%w: invalid regexp '%s'", errTagParser, ruleValueStr)
 			}
 			rv.regexp = re
 
 		case LENGTH:
 			requiredLen, err := strconv.Atoi(ruleValueStr)
 			if err != nil {
-				// TODO: program err
-				return nil, fmt.Errorf("%w: '%s' is not a number", errParser, ruleValueStr)
+				return nil, fmt.Errorf("%w: '%s' is not a number", errTagParser, ruleValueStr)
 			}
 			rv.len = &requiredLen
 
 		default:
-			// TODO: program err
-			return nil, fmt.Errorf("%w: unknown tag value '%s'", errParser, ruleType)
-
+			return nil, fmt.Errorf("%w: unknown tag value '%s'", errTagParser, ruleType)
 		}
 
 		rule := validationRule{ruleType: ruleType, ruleValue: rv}
-		fmt.Println("Parsed rule:", rule)
 
 		rules = append(rules, rule)
 	}
 	return rules, nil
 }
 
+//nolint:gocognit,exhaustive
 func validateItem(input reflect.Value, rules []validationRule) error {
 	switch input.Kind() {
-	case reflect.Int:
+	case reflect.Int, reflect.Int32, reflect.Int64:
 		inputVal := input.Int()
 		for _, r := range rules {
 			switch r.ruleType {
 			case MIN:
 				if inputVal < *r.ruleValue.minVal {
-					return fmt.Errorf("%w: %d < %d", errValidator, inputVal, r.ruleValue.minVal)
+					return fmt.Errorf("%w: %d < %d", errValidator, inputVal, *r.ruleValue.minVal)
 				}
 			case MAX:
 				if inputVal > *r.ruleValue.maxVal {
-					return fmt.Errorf("%w: %d > %d", errValidator, inputVal, r.ruleValue.maxVal)
+					return fmt.Errorf("%w: %d > %d", errValidator, inputVal, *r.ruleValue.maxVal)
 				}
 			case IN:
 				var allowedValues []int64
 				for _, part := range r.ruleValue.allowed {
 					n, err := strconv.Atoi(part)
 					if err != nil {
-						// TODO: program err
-						return fmt.Errorf("%w: '%s' is not a number", errParser, part)
+						return fmt.Errorf("%w: '%s' is not a number", errTagParser, part)
 					}
 					allowedValues = append(allowedValues, int64(n))
 				}
 				if !slices.Contains(allowedValues, inputVal) {
 					return fmt.Errorf("%w: value not in %v", errValidator, allowedValues)
-
 				}
-
 			}
 		}
 
@@ -173,14 +153,13 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 			switch r.ruleType {
 			case LENGTH:
 				if len(inputVal) != *r.ruleValue.len {
-					return fmt.Errorf("%w: length != %d", errValidator, r.ruleValue.len)
-
+					return fmt.Errorf("%w: length != %d", errValidator, *r.ruleValue.len)
 				}
 			case REGEXP:
 				re := r.ruleValue.regexp
 
 				if !re.MatchString(inputVal) {
-					return fmt.Errorf("%w: value not match regexp '%q'", errValidator, r.ruleValue.regexp)
+					return fmt.Errorf("%w: value not match regexp '%s'", errValidator, r.ruleValue.regexp)
 				}
 			case IN:
 				if !slices.Contains(r.ruleValue.allowed, inputVal) {
@@ -191,8 +170,10 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 
 	case reflect.Slice:
 		elemKind := input.Type().Elem().Kind()
+		// fmt.Println(elemKind)
+		//nolint:exhaustive
 		switch elemKind {
-		case reflect.Int, reflect.String, reflect.Slice:
+		case reflect.Int, reflect.Int32, reflect.Int64, reflect.String, reflect.Slice:
 			for i := 0; i < input.Len(); i++ {
 				elem := input.Index(i)
 				if err := validateItem(elem, rules); err != nil {
@@ -201,6 +182,7 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 			}
 		default:
 		}
+	default:
 	}
 	return nil
 }
@@ -210,28 +192,30 @@ func Validate(v interface{}) error {
 	rv := reflect.ValueOf(v)
 	rt := rv.Type()
 
-	if rt.Kind() == reflect.Struct {
-		argCnt := rt.NumField()
-		for i := 0; i < argCnt; i++ {
-			rf := rt.Field(i)
-			rfValue := rv.Field(i)
-
-			if !rf.IsExported() {
-				continue
-			}
-			tags, _ := parseTag(rf.Tag)
-			elemErr := validateItem(rfValue, tags)
-			if elemErr != nil {
-				if errors.Is(elemErr, errParser) {
-					return elemErr
-				}
-				err = append(err, ValidationError{Field: rf.Name, Err: elemErr})
-			}
-		}
-	} else {
+	if rt.Kind() != reflect.Struct {
 		return fmt.Errorf("v is not a struct")
 	}
 
+	argCnt := rt.NumField()
+	for i := 0; i < argCnt; i++ {
+		rf := rt.Field(i)
+		rfValue := rv.Field(i)
+
+		if !rf.IsExported() {
+			continue
+		}
+		tags, parseErr := parseTag(rf.Tag)
+		if parseErr != nil {
+			return parseErr
+		}
+		elemErr := validateItem(rfValue, tags)
+		if elemErr != nil {
+			if errors.Is(elemErr, errTagParser) {
+				return elemErr
+			}
+			err = append(err, ValidationError{Field: rf.Name, Err: elemErr})
+		}
+	}
 	if len(err) > 0 {
 		return err
 	}
