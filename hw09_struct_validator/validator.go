@@ -38,7 +38,15 @@ func (v ValidationErrors) Error() string {
 
 type validationRule struct {
 	ruleType  string
-	ruleValue string
+	ruleValue ruleValue
+}
+
+type ruleValue struct {
+	minVal  *int64
+	maxVal  *int64
+	allowed []string
+	regexp  *regexp.Regexp
+	len     *int
 }
 
 var (
@@ -66,19 +74,61 @@ func parseTag(stag reflect.StructTag) ([]validationRule, error) {
 	rules := make([]validationRule, 0, len(strRules))
 
 	for _, r := range strRules {
-		ruleType, ruleValue, found := strings.Cut(r, ":")
+		ruleType, ruleValueStr, found := strings.Cut(r, ":")
 
-		if !found || ruleValue == "" {
+		if !found || ruleValueStr == "" {
 			// TODO: program tag err
 			return nil, fmt.Errorf("%w: empty tag '%s'", errParser, validateTag)
 		}
-		rule := validationRule{ruleType: ruleType, ruleValue: ruleValue}
-		fmt.Println("Parsed rule:", rule)
 
-		if !isAllowedRule(ruleType) {
+		var rv ruleValue
+		switch ruleType {
+		case MIN:
+			ruleMin, err := strconv.ParseInt(ruleValueStr, 10, 64)
+			if err != nil {
+				// TODO: program err
+				return nil, fmt.Errorf("%w: '%s' is not a number", errParser, ruleValueStr)
+			}
+			rv.minVal = &ruleMin
+		case MAX:
+			ruleMax, err := strconv.ParseInt(ruleValueStr, 10, 64)
+			if err != nil {
+				// TODO: program err
+				return nil, fmt.Errorf("%w: '%s' is not a number", errParser, ruleValueStr)
+			}
+			rv.maxVal = &ruleMax
+
+		case IN:
+			var allowedValues []string
+			for _, part := range strings.Split(ruleValueStr, ",") {
+				part = strings.TrimSpace(part)
+				allowedValues = append(allowedValues, part)
+			}
+			rv.allowed = allowedValues
+		case REGEXP:
+			re, err := regexp.Compile(ruleValueStr)
+			if err != nil {
+				// TODO: program err
+				return nil, fmt.Errorf("%w: invalid regexp '%s'", errParser, ruleValueStr)
+			}
+			rv.regexp = re
+
+		case LENGTH:
+			requiredLen, err := strconv.Atoi(ruleValueStr)
+			if err != nil {
+				// TODO: program err
+				return nil, fmt.Errorf("%w: '%s' is not a number", errParser, ruleValueStr)
+			}
+			rv.len = &requiredLen
+
+		default:
 			// TODO: program err
 			return nil, fmt.Errorf("%w: unknown tag value '%s'", errParser, ruleType)
+
 		}
+
+		rule := validationRule{ruleType: ruleType, ruleValue: rv}
+		fmt.Println("Parsed rule:", rule)
 
 		rules = append(rules, rule)
 	}
@@ -92,25 +142,16 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 		for _, r := range rules {
 			switch r.ruleType {
 			case MIN:
-				ruleMin, err := strconv.Atoi(r.ruleValue)
-				if err != nil {
-					return fmt.Errorf("%w: '%s' is not a number", errParser, r.ruleValue)
-				}
-				if inputVal < int64(ruleMin) {
-					return fmt.Errorf("%w: %d < %d", errValidator, inputVal, ruleMin)
+				if inputVal < *r.ruleValue.minVal {
+					return fmt.Errorf("%w: %d < %d", errValidator, inputVal, r.ruleValue.minVal)
 				}
 			case MAX:
-				ruleMax, err := strconv.Atoi(r.ruleValue)
-				if err != nil {
-					return fmt.Errorf("%w: '%s' is not a number", errParser, r.ruleValue)
-				}
-				if inputVal > int64(ruleMax) {
-					return fmt.Errorf("%w: %d > %d", errValidator, inputVal, ruleMax)
+				if inputVal > *r.ruleValue.maxVal {
+					return fmt.Errorf("%w: %d > %d", errValidator, inputVal, r.ruleValue.maxVal)
 				}
 			case IN:
 				var allowedValues []int64
-				for _, part := range strings.Split(r.ruleValue, ",") {
-					part = strings.TrimSpace(part)
+				for _, part := range r.ruleValue.allowed {
 					n, err := strconv.Atoi(part)
 					if err != nil {
 						// TODO: program err
@@ -131,28 +172,19 @@ func validateItem(input reflect.Value, rules []validationRule) error {
 		for _, r := range rules {
 			switch r.ruleType {
 			case LENGTH:
-				requiredLen, _ := strconv.Atoi(r.ruleValue)
-				if len(inputVal) != requiredLen {
-					return fmt.Errorf("%w: length != %d", errValidator, requiredLen)
+				if len(inputVal) != *r.ruleValue.len {
+					return fmt.Errorf("%w: length != %d", errValidator, r.ruleValue.len)
 
 				}
 			case REGEXP:
-				re, err := regexp.Compile(r.ruleValue)
-				if err != nil {
-					// TODO: program err
-					return fmt.Errorf("%w: value not match regexp '%s'", errParser, r.ruleValue)
-				}
+				re := r.ruleValue.regexp
+
 				if !re.MatchString(inputVal) {
-					return fmt.Errorf("%w: invalid regexp '%q'", errValidator, r.ruleValue)
+					return fmt.Errorf("%w: value not match regexp '%q'", errValidator, r.ruleValue.regexp)
 				}
 			case IN:
-				var allowedValues []string
-				for _, part := range strings.Split(r.ruleValue, ",") {
-					part = strings.TrimSpace(part)
-					allowedValues = append(allowedValues, part)
-				}
-				if !slices.Contains(allowedValues, inputVal) {
-					return fmt.Errorf("%w: value not in %v", errValidator, allowedValues)
+				if !slices.Contains(r.ruleValue.allowed, inputVal) {
+					return fmt.Errorf("%w: value not in %v", errValidator, r.ruleValue.allowed)
 				}
 			}
 		}
@@ -183,7 +215,6 @@ func Validate(v interface{}) error {
 		for i := 0; i < argCnt; i++ {
 			rf := rt.Field(i)
 			rfValue := rv.Field(i)
-			fmt.Printf("Field %s : %s : %s\t\tValue %s\n", rf.Name, rf.Type, rf.Tag, rfValue)
 
 			if !rf.IsExported() {
 				continue
