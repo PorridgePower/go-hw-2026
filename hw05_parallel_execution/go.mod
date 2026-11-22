@@ -1,4 +1,4 @@
-module github.com/fixme_my_friend/hw05_parallel_execution
+module github.com/PorridgePower/go-hw-2026/hw05_parallel_execution
 
 go 1.23
 
